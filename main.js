@@ -22,18 +22,25 @@ function main() {
 
   const vsSource = `
     attribute vec4 aVertexPosition;
+    attribute vec2 aTextureCoord;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
+    varying highp vec2 vTextureCoord;
+
+
     void main() {
       gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+      vTextureCoord = aTextureCoord;
     }
   `;
 
   // Fragment shader program
 
   const fsSource = `
+    varying highp vec2 vTextureCoord;
+    uniform sampler2D uTexture;
     void main() {
-      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      gl_FragColor = texture2D(uTexture, vTextureCoord);
     }
   `;
 
@@ -76,31 +83,77 @@ function main() {
     1.0,-1.0, 1.0
  ];
 
+    const textureCoordinates = [
+    // Front
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+    // Back
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+    // Top
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+    // Bottom
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+    // Right
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+    // Left
+    0.0,  0.0,
+    1.0,  0.0,
+    1.0,  1.0,
+    0.0,  1.0,
+  ];
+
   // Initialize a shader program; this is where all the lighting
   // for the vertices and so forth is established.
     const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
 
 
-    const vertexPosUniform = gl.getAttribLocation(shaderProgram, 'aVertexPosition')
+    const vertexPosAttrib = gl.getAttribLocation(shaderProgram, 'aVertexPosition')
+    const textureCoordAttrib = gl.getAttribLocation(shaderProgram, 'aTextureCoord')
+    
+
     const projectionMatrixUniform = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix')
     const modelViewMatrixUniform = gl.getUniformLocation(shaderProgram, 'uModelViewMatrix')
+    const textureUniform = gl.getUniformLocation(shaderProgram, 'uTexture');
 
     uniforms = {
-        vertex: vertexPosUniform,
         projection: projectionMatrixUniform,
-        model: modelViewMatrixUniform
+        model: modelViewMatrixUniform,
+        texture: textureUniform,
+    }
+
+    attribs = {
+        vertex: vertexPosAttrib,
+        texture: textureCoordAttrib
     }
 
     const texture = loadTexture(gl, './metal.jpg')
   
 
-    
+    // position buffer
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER,
                   new Float32Array(positions),
                   gl.STATIC_DRAW);
+   // texturePos buffer
+   const textureCoordBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
 
+   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     
     var then = 0;
 
@@ -108,7 +161,8 @@ function main() {
         now *= 0.001;
         const deltaTime = now - then;
         then = now;
-        drawLoop(gl, positionBuffer, uniforms, shaderProgram, deltaTime)
+
+        drawLoop(gl, positionBuffer, textureCoordBuffer, attribs, uniforms, shaderProgram, deltaTime, texture)
 
         requestAnimationFrame(render);
 
@@ -117,11 +171,14 @@ function main() {
 }
 
 
-function drawLoop(gl, positionBuffer, uniforms, shaderProgram, deltaTime) {
+function drawLoop(gl, positionBuffer, textureCoordBuffer, attribs, uniforms, shaderProgram, deltaTime, texture) {
 
-    vertexPosUniform = uniforms.vertex;
-    projectionMatrixUniform = uniforms.projection
-    modelViewMatrixUniform = uniforms.model
+    vertexPosAttrib = attribs.vertex;
+    textureCoordAttrib = attribs.texture;
+
+    projectionMatrixUniform = uniforms.projection;
+    modelViewMatrixUniform = uniforms.model;
+    textureUniform = uniforms.texture;
 
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clearDepth(1.0);                 
@@ -148,6 +205,18 @@ function drawLoop(gl, positionBuffer, uniforms, shaderProgram, deltaTime) {
               [0, 1, 1]);       // axis to rotate around
 
 
+    {
+            const num = 2;
+            const type = gl.FLOAT;
+            const normalize = false;
+            const stride = 0;
+            const offset = 0;
+            gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
+            gl.vertexAttribPointer(textureCoordAttrib, num, type, normalize, stride, offset);
+            gl.enableVertexAttribArray(textureCoordAttrib);
+    }
+
+
     const numComponents = 2;
     const type = gl.FLOAT;
     const normalize = false;
@@ -156,14 +225,14 @@ function drawLoop(gl, positionBuffer, uniforms, shaderProgram, deltaTime) {
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
     gl.vertexAttribPointer(
-        vertexPosUniform,
+        vertexPosAttrib,
         3,
         type,
         normalize,
         stride,
         offset);
 
-    gl.enableVertexAttribArray(vertexPosUniform);
+    gl.enableVertexAttribArray(vertexPosAttrib);
 
     gl.useProgram(shaderProgram);
 
@@ -176,8 +245,14 @@ function drawLoop(gl, positionBuffer, uniforms, shaderProgram, deltaTime) {
         modelViewMatrixUniform,
         false,
         modelViewMatrix);
-  
-    {
+
+        
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(textureUniform, 0);
+    
+
+            {
       const offset = 0;
       const vertexCount = 4;
       gl.drawArrays(gl.TRIANGLES, 0, 12*3);
